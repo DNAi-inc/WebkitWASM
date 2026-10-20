@@ -60,3 +60,60 @@ This repository does not distribute a prebuilt browser engine. Before offering
 one, retain its exact corresponding source, modifications, dependency inputs,
 build settings and all applicable notices. Download scripts are not a substitute
 for maintaining the required corresponding-source access.
+
+Single-file developer tool for a compatible embedded host
+
+The complete tool is tools/wasm-library-developer.js (BSD-2-Clause). It has no
+third-party dependencies, network requests or extension requirements. Review
+its source before running it. Library source/build outputs remain separate.
+
+1. Build the libraries from this repository. The engine files are embedder.js,
+   embedder.wasm and optional bib-build-config.js. For a profile-enabled host,
+   follow experiments/profile/USAGE.txt and run its preparation script before
+   the engine build; preserve the matching engine ABI and build configuration.
+   Rebuild the client with tools/rebuild-wisp-client.sh.
+2. Open the connected host's full local library-licence page in a separate
+   current Chrome tab at the SAME HTTPS origin as the host. Keep the normal
+   application tab open. The licence page must contain the version 1 library
+   cache descriptor; do not run the tool on github.com or a local file URL.
+3. Download/review tools/wasm-library-developer.js. In Chrome Developer Tools,
+   Sources > Snippets, create a snippet, paste this single file and run it.
+   The file intentionally does not download or evaluate code from a URL.
+   Do not bypass browser-generated security or paste warnings.
+4. In the developer console, run either:
+
+     await WasmLibraryDeveloper.installWisp()
+     await WasmLibraryDeveloper.installEngine()
+
+   An explicit temporary developer file chooser appears. Select your rebuilt
+   client, or the two engine files plus optional build configuration. The tool
+   creates the engine ZIP locally using Chrome's compression implementation.
+   Only library paths are accepted. Neither the library bytes nor their hashes
+   are sent to another service. Cancelling the selection changes nothing.
+5. Inspect the local selection with:
+
+     await WasmLibraryDeveloper.status()
+
+   Reload only application pages that should use the selected libraries. No
+   page, document, session or network connection is automatically restarted.
+   Already-running pages retain their existing libraries.
+6. To select the supplied libraries again:
+
+     await WasmLibraryDeveloper.reset()
+
+   Reload the desired application pages when ready. Reset removes only the two
+   library selections, not documents, credentials, pairing or other site data.
+
+Run status/reset in the same browser profile and HTTPS origin used to install.
+Keep your rebuilt program files: normal browser site-data cleanup may remove
+cached selections. The tool accepts up to 4 MiB of client JavaScript, or an
+engine up to 384 MiB expanded and 160 MiB compressed. Those resource bounds do
+not require an exact supplied-library hash. Format validation is not a promise
+that arbitrary modified code is safe or ABI-compatible. Modified code runs in
+that host's existing isolated engine environment when a page next opens.
+
+The tool never loads automatically with the ordinary application interface.
+Its code, instructions and the library sources may be retained locally. The
+host's cache descriptor is public program configuration, not authentication or
+user data. A host must preserve an actual compatible replacement path; a link
+to this file alone does not establish licence compliance for every host.

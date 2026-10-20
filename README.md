@@ -6,6 +6,7 @@ Based on [theogbob/WebkitWasm](https://github.com/theogbob/WebkitWasm).
 Experimental source code; no prebuilt browser engine is included.
 
 - [Building and running](BUILDING.txt)
+- [Single-file library developer tool](tools/wasm-library-developer.js)
 - [Dependency versions](SOURCE-VERSIONS.json)
 - [Third-party notices](THIRD-PARTY-NOTICES.txt)
 - [Original port licence](LICENSE)
