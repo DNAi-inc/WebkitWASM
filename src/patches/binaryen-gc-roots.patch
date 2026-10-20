@@ -1,0 +1,124 @@
+diff --git a/src/passes/SpillPointers.cpp b/src/passes/SpillPointers.cpp
+--- a/src/passes/SpillPointers.cpp
++++ b/src/passes/SpillPointers.cpp
+@@ -35,13 +35,16 @@
+ 
+ struct SpillPointers
+   : public WalkerPass<LivenessWalker<SpillPointers, Visitor<SpillPointers>>> {
++  explicit SpillPointers(bool encodedValues = false) : encodedValues(encodedValues) {}
++  bool encodedValues;
++
+   bool isFunctionParallel() override { return true; }
+ 
+   // Adds writes to memory.
+   bool addsEffects() override { return true; }
+ 
+   std::unique_ptr<Pass> create() override {
+-    return std::make_unique<SpillPointers>();
++    return std::make_unique<SpillPointers>(encodedValues);
+   }
+ 
+   // a mapping of the pointers to all the spillable things. We need to know
+@@ -69,6 +72,21 @@
+   // main entry point
+ 
+   void doWalkFunction(Function* func) {
++    if (encodedValues) {
++      // A previous argument or expression result may remain on the Wasm
++      // operand stack while a nested call collects. Materialize those values
++      // as locals before computing liveness; spilling original locals alone
++      // cannot expose them. Do not optimize them back onto the operand stack.
++      PassRunner preparation(getModule(), getPassOptions());
++      preparation.setIsNested(true);
++      preparation.add("flatten");
++      // Flatten alone can exceed VM local-count limits in the large CLoop.
++      // Reuse non-overlapping local slots without re-stacking expressions.
++      preparation.add("simplify-locals-nonesting");
++      preparation.add("reorder-locals");
++      preparation.add("coalesce-locals");
++      preparation.runOnFunction(func);
++    }
+     Super::doWalkFunction(func);
+     spillPointers();
+   }
+@@ -84,10 +102,18 @@
+     // we only care about possible pointers
+     auto* func = getFunction();
+     PointerMap pointerMap;
++    Index spillSize = 0;
+     for (Index i = 0; i < func->getNumLocals(); i++) {
+-      if (func->getLocalType(i) == pointerType) {
+-        auto offset = pointerMap.size() * pointerType.getByteSize();
+-        pointerMap[i] = offset;
++      auto type = func->getLocalType(i);
++      // JSC's wasm32 JSValue also carries cell payloads in i64/f64 locals.
++      // Native register scanning sees those bits; spill them here as well.
++      if (type == pointerType ||
++          (encodedValues && (type == Type::i64 || type == Type::f64 ||
++                             type == Type::f32 || type == Type::v128))) {
++        auto size = type.getByteSize();
++        spillSize = (spillSize + size - 1) & ~(size - 1);
++        pointerMap[i] = spillSize;
++        spillSize += size;
+       }
+     }
+     // find calls and spill around them
+@@ -148,7 +174,7 @@
+       // get the stack space, and set the local to it
+       ABI::getStackSpace(spillLocal,
+                          func,
+-                         pointerType.getByteSize() * pointerMap.size(),
++                         spillSize,
+                          *getModule());
+     }
+   }
+@@ -191,13 +217,14 @@
+     }
+     // add the spills
+     for (auto index : toSpill) {
++      auto valueType = func->getLocalType(index);
+       block->list.push_back(
+-        builder.makeStore(pointerType.getByteSize(),
++        builder.makeStore(valueType.getByteSize(),
+                           pointerMap[index],
+-                          pointerType.getByteSize(),
++                          valueType.getByteSize(),
+                           builder.makeLocalGet(spillLocal, pointerType),
+-                          builder.makeLocalGet(index, pointerType),
+-                          pointerType,
++                          builder.makeLocalGet(index, valueType),
++                          valueType,
+                           getModule()->memories[0]->name));
+     }
+     // add the (modified) call
+@@ -209,4 +236,6 @@
+ 
+ Pass* createSpillPointersPass() { return new SpillPointers(); }
+ 
++Pass* createSpillJSCRootsPass() { return new SpillPointers(true); }
++
+ } // namespace wasm
+diff --git a/src/passes/passes.h b/src/passes/passes.h
+--- a/src/passes/passes.h
++++ b/src/passes/passes.h
+@@ -171,6 +171,7 @@
+ Pass* createSouperifyPass();
+ Pass* createSouperifySingleUsePass();
+ Pass* createSpillPointersPass();
++Pass* createSpillJSCRootsPass();
+ Pass* createStackCheckPass();
+ Pass* createStringGatheringPass();
+ Pass* createStringLiftingPass();
+diff --git a/src/passes/pass.cpp b/src/passes/pass.cpp
+--- a/src/passes/pass.cpp
++++ b/src/passes/pass.cpp
+@@ -517,6 +517,9 @@
+   registerPass("spill-pointers",
+                "spill pointers to the C stack (useful for Boehm-style GC)",
+                createSpillPointersPass);
++  registerPass("spill-jsc-roots",
++               "spill pointers and encoded JavaScriptCore values to the C stack",
++               createSpillJSCRootsPass);
+   registerPass("stub-unsupported-js",
+                "stub out unsupported JS operations",
+                createStubUnsupportedJSOpsPass);

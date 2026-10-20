@@ -1,0 +1,5 @@
+Optional profile experiment
+
+This folder retains an optional cookie/storage profile experiment as source. The overlay covers the embedder and two WebKit curl cookie-storage files. `profile-api.cpp.inc` is part of that experiment. Run `python3 experiments/profile/prepare-profile-engine.py` after preparing the pinned baseline source to generate the candidate overlay under `build/profile-overlay/`.
+
+Applying it changes source and requires a new engine build, GC-root instrumentation and acceptance. The baseline engine hash in `SOURCE-VERSIONS.json` does not describe this optional variant. The original per-file copyright/licence notices apply to each overlay file.

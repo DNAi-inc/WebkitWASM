@@ -1,0 +1,226 @@
+# BrowserInBrowser embedder target (Phase 2 first-paint gate).
+#
+# Included from Source/WebCore/PlatformEmscripten.cmake via
+# cmake_language(DEFER CALL include ...) — i.e. this file executes in
+# WebCore's directory scope AFTER the whole WebCore/CMakeLists.txt has been
+# processed: the WebCore target exists and the include-dir lists are final.
+# Include-dir consumption copies the WebCoreTestSupport pattern (the bottom
+# of WebCore/CMakeLists.txt): WebCore's PRIVATE include dirs do not propagate
+# through target_link_libraries, so internal-header consumers replicate them.
+
+get_filename_component(BIB_EMBEDDER_DIR "${EMSCRIPTEN_EMBEDDER_CMAKE}" DIRECTORY)
+
+add_executable(BibEmbedder
+    ${BIB_EMBEDDER_DIR}/BibClipboard.cpp
+    ${BIB_EMBEDDER_DIR}/BibIDBServer.cpp
+    ${BIB_EMBEDDER_DIR}/BibMediaPlayer.cpp
+    ${BIB_EMBEDDER_DIR}/BibMediaSource.cpp
+    ${BIB_EMBEDDER_DIR}/EmbedderStrategies.cpp
+    ${BIB_EMBEDDER_DIR}/main.cpp
+)
+set_target_properties(BibEmbedder PROPERTIES OUTPUT_NAME embedder)
+# Keep native objects optimized while allowing a fast link during UI iteration.
+set(BIB_LINK_OPT "3" CACHE STRING "WASM link optimization level (0 for iteration, 3 for delivery)")
+if (NOT BIB_LINK_OPT MATCHES "^[0-3]$")
+    message(FATAL_ERROR "BIB_LINK_OPT must be 0, 1, 2 or 3")
+endif ()
+target_link_options(BibEmbedder PRIVATE "-O${BIB_LINK_OPT}")
+# JSC conservatively scans the linear-memory C stack. Optimized Wasm locals
+# are otherwise invisible to it; setjmp does not expose caller Wasm locals.
+# Materialize operand-stack values before liveness; include boxed i64/f64
+# cell payloads and SIMD values as well as ordinary i32 pointers.
+# Run AFTER all link optimization so later passes cannot erase these GC roots.
+if (NOT BIB_GC_WASM_OPT OR NOT EXISTS "${BIB_GC_WASM_OPT}")
+    message(FATAL_ERROR "Build the pinned GC root tool with tools/build-gc-roots.sh first")
+endif ()
+execute_process(COMMAND "${BIB_GC_WASM_OPT}" --help OUTPUT_VARIABLE BIB_GC_HELP)
+if (NOT BIB_GC_HELP MATCHES "--spill-jsc-roots")
+    message(FATAL_ERROR "BIB_GC_WASM_OPT does not provide spill-jsc-roots")
+endif ()
+set_property(TARGET BibEmbedder APPEND PROPERTY LINK_DEPENDS "${BIB_GC_WASM_OPT}")
+add_custom_command(TARGET BibEmbedder POST_BUILD
+    # Keep the uninstrumented input outside bin/ for toolchain regression work.
+    # It is not a deployable engine and is never mounted by the desktop server.
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/gc-uninstrumented"
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE_DIR:BibEmbedder>/embedder.wasm"
+        "${CMAKE_BINARY_DIR}/gc-uninstrumented/embedder.wasm"
+    COMMAND "${BIB_GC_WASM_OPT}" "$<TARGET_FILE_DIR:BibEmbedder>/embedder.wasm"
+        --spill-jsc-roots -g --mvp-features --enable-threads
+        --enable-bulk-memory --enable-bulk-memory-opt
+        --enable-call-indirect-overlong --enable-multivalue
+        --enable-mutable-globals --enable-nontrapping-float-to-int
+        --enable-reference-types --enable-sign-ext --enable-simd
+        -o "$<TARGET_FILE_DIR:BibEmbedder>/embedder.wasm"
+    VERBATIM)
+set_property(TARGET BibEmbedder APPEND PROPERTY LINK_DEPENDS "${BIB_EMBEDDER_DIR}/../../web/engine-pre.js")
+
+target_include_directories(BibEmbedder PRIVATE
+    ${WebCore_INCLUDE_DIRECTORIES}
+    ${WebCore_PRIVATE_INCLUDE_DIRECTORIES}
+)
+target_include_directories(BibEmbedder SYSTEM PRIVATE
+    ${WebCore_SYSTEM_INCLUDE_DIRECTORIES}
+)
+
+# WebCore is static: its PRIVATE link deps (JSC/WTF/PAL/curl tier/ICU) reach
+# the final link as $<LINK_ONLY:> interface entries. Skia is linked directly
+# for its INTERFACE include dirs (<skia/...> resolves via symlinked headers).
+target_link_libraries(BibEmbedder PRIVATE WebCore Skia::Skia)
+# Older CMake FindCURL imports only libcurl.a, omitting static dependencies.
+# The pinned sysroot's .pc carries the full Brotli/nghttp2/OpenSSL chain.
+if (BIB_WASM_SYSROOT)
+    # Emscripten resets this environment variable in its toolchain file.
+    set(ENV{PKG_CONFIG_LIBDIR} "${BIB_WASM_SYSROOT}/lib/pkgconfig:${BIB_WASM_SYSROOT}/share/pkgconfig")
+    set(ENV{PKG_CONFIG_PATH} "")
+    set(PKG_CONFIG_ARGN --static)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(BIB_STATIC_CURL REQUIRED IMPORTED_TARGET libcurl)
+    target_link_libraries(BibEmbedder PRIVATE PkgConfig::BIB_STATIC_CURL)
+endif ()
+
+# Same engine-sized stack/heap as the Phase 1 jsc shell
+# (Source/JavaScriptCore/shell/CMakeLists.txt).
+#
+# W-B1: the engine runs on a dedicated pthread (-sPROXY_TO_PTHREAD moves
+# main() off the browser main thread). The whole tree compiles -pthread
+# (CMAKE_C/CXX_FLAGS at configure; sysroot deps were always -pthread).
+# W-B0 spike (2497a89) proved: SOCKFS sockets proxy to MAIN scope (wisp
+# dispatcher unchanged), 4GB growable shared memory instantiates, abort
+# stacks stay symbolized. POOL_SIZE=4: 1 taken by proxied main + headroom
+# for W-C real workers / future curl threads.
+# BIB_PTHREAD=OFF (tools/build-webcore.sh knob): single-threaded engine for
+# no-SAB deployments. The TREE's compile flags must match (the script keeps
+# them in sync — a -pthread-compiled tree links fine either way, but a
+# plain tree cannot link -sPROXY_TO_PTHREAD). The embedder C++ is dual-mode:
+# entries run direct when the caller IS the engine thread, and
+# engine-pre.js's worker hooks self-disable outside workers (browser.html
+# keeps page-side pump fallbacks).
+option(BIB_PTHREAD "Run the engine on a dedicated pthread (needs COOP/COEP + SharedArrayBuffer)" ON)
+if (BIB_PTHREAD)
+    target_link_options(BibEmbedder PRIVATE
+        "SHELL:-pthread"
+        "SHELL:-sPROXY_TO_PTHREAD"
+        "SHELL:-sPTHREAD_POOL_SIZE=4"
+        # W-B2: the engine pthread drives the page canvas through an
+        # OffscreenCanvas transferred at proxied-main spawn. The transfer
+        # list is RUNTIME-decided (GPU mode only) via __wrap_pthread_create
+        # in main.cpp — deliberately NOT -sOFFSCREENCANVASES_TO_PTHREAD:
+        # that list is compile-time-fixed and a missing canvas fails
+        # pthread_create outright (node gates have no DOM; raster mode
+        # must keep the page's 2d context on the canvas).
+        "SHELL:-sOFFSCREENCANVAS_SUPPORT=1"
+        # NOTE: -sOFFSCREEN_FRAMEBUFFER=1 was required ONLY by the legacy
+        # Approach R readback present — renderViaOffscreenBackBuffer (in
+        # PlatformDisplayEmscripten) needed it to force preserveDrawingBuffer.
+        # The zero-copy bitmap present (transferToImageBitmap → page
+        # bitmaprenderer) needs the OffscreenCanvas' REAL default framebuffer,
+        # which an offscreen backbuffer would hide → blank/stale ImageBitmaps.
+        # So it is intentionally NOT set. To debug the old path, re-add it AND
+        # compile PlatformDisplayEmscripten with -DBIB_GPU_READBACK_PRESENT.
+        # See handoff-2026-06-13-gpu-present-rearchitecture.md.
+        "SHELL:-Wl,--wrap=pthread_create"
+    )
+endif ()
+
+# Stamp the engine-threading mode into a tiny JS the host page (web/browser.html)
+# loads BEFORE it picks #screen's canvas context — context type is EXCLUSIVE
+# (2d / bitmaprenderer / engine-owned webgl2), and BIB_PTHREAD=ON vs OFF needs
+# different ones (gpu-bitmap vs gpu-implicit). Emitted next to embedder.js so the
+# dev server's /engine mount serves it at /engine/bib-build-config.js. Regenerates
+# on reconfigure (the script re-syncs BIB_PTHREAD when the env var flips).
+file(GENERATE
+    OUTPUT "$<TARGET_FILE_DIR:BibEmbedder>/bib-build-config.js"
+    CONTENT "// Generated by embedder.cmake — do not edit. Stamps the build's threading mode.\nwindow.BIB_PTHREAD_BUILD = $<IF:$<BOOL:${BIB_PTHREAD}>,true,false>;\nwindow.BIB_LINK_OPT = ${BIB_LINK_OPT};\nwindow.BIB_GC_POINTER_SPILLS = true;\nwindow.BIB_GC_ROOT_MODE = 'jsc-numeric-v2';\n")
+
+target_link_options(BibEmbedder PRIVATE
+    # Worker-scope Module hooks (pump, wasm2js, injection text): the engine
+    # pthread's EM_ASM blocks read the WORKER's Module, which inherits
+    # nothing from the page (W-B0). NOTE: cmake does not track pre-js edits —
+    # touch main.cpp to force a relink after changing it.
+    "SHELL:--pre-js ${BIB_EMBEDDER_DIR}/../../web/engine-pre.js"
+    "SHELL:-sSTACK_SIZE=8MB"
+    "SHELL:-sINITIAL_MEMORY=256MB"
+    "SHELL:-sALLOW_MEMORY_GROWTH=1"
+    "SHELL:-sMAXIMUM_MEMORY=4GB"
+    # W-B1: EXIT_RUNTIME=0 — under PROXY_TO_PTHREAD a keepalive underflow
+    # on the proxied-main pthread with EXIT_RUNTIME=1 tears down the WHOLE
+    # runtime mid-session (observed: page Module gutted, exports vanish).
+    # The interactive engine must be un-teardownable; gate/node mode calls
+    # exit() explicitly in main() so Module.onExit still fires there.
+    "SHELL:-sEXIT_RUNTIME=0"
+    # FS: the node runner (tools/run-embedder.cjs) reads /out.ppm out of
+    # MEMFS in Module.onExit, and both hosts pre-create fontconfig's cache
+    # dir in preRun. HEAPU8: the browser host page (web/browser.html) wraps
+    # bib_render()'s pixel pointer in a Uint8ClampedArray for putImageData.
+    # ccall: browser.html marshals bib_key()'s string args. stringToUTF8/
+    # lengthBytesUTF8: main.cpp reads Module.bibHTML inside EM_ASM — export
+    # forces them into the runtime so the EM_ASM block can call them.
+    # ENV: lets the host page set engine env vars in preRun (e.g.
+    # DEBUG_CURL=1 turns on libcurl verbose tracing -> printErr).
+    # UTF8ToString: the persistence push (bibMaybePersist) reads the JSON
+    # blob out of the shared heap on the MAIN thread inside an EM_ASM block.
+    "SHELL:-sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,ccall,stringToUTF8,lengthBytesUTF8,UTF8ToString,ENV"
+    # Surface the COMPLETE undefined-symbol list per link attempt instead of
+    # wasm-ld's default 20-error cutoff — each stub iteration costs minutes.
+    "SHELL:-Wl,--error-limit=0"
+    # Keep the wasm name section: abort/crash stacks in the browser show
+    # real function names instead of wasm-function[N]. Costs binary size
+    # only (no codegen change) — load-bearing for site-abort diagnosis.
+    "SHELL:--profiling-funcs"
+    # Skia GPU (decision-005 G2): Ganesh drives a WebGL2 context created at
+    # boot when Module.bibGPU is set. FULL_ES3 ships the JS shadow-buffer
+    # emulation of glMapBufferRange & co — the SK_ASSUME_GL_ES=1 archive's
+    # GLES3 interface validation requires them (G1 finding 3). Inert in
+    # node/gate mode: nothing creates a context there.
+    "SHELL:-sMAX_WEBGL_VERSION=2"
+    "SHELL:-sFULL_ES3=1"
+)
+
+# ICU data archive at the same absolute path ICU compiled in as its default
+# data dir (jsc-shell trick — works in node and browser with no env setup).
+if (JSC_EMBED_ICU_DATA_FILE)
+    target_link_options(BibEmbedder PRIVATE
+        "SHELL:--embed-file ${JSC_EMBED_ICU_DATA_FILE}@${JSC_EMBED_ICU_DATA_FILE}")
+endif ()
+
+# Fonts are load-bearing: fontconfig config tree at /etc/fonts (compiled-in
+# --sysconfdir) and at least one real TTF at /usr/share/fonts (compiled-in
+# --with-default-fonts). Without both, text paints nothing.
+if (BIB_FONTCONFIG_ETC_DIR)
+    target_link_options(BibEmbedder PRIVATE
+        "SHELL:--embed-file ${BIB_FONTCONFIG_ETC_DIR}@/etc/fonts")
+endif ()
+if (BIB_FONTS_DIR)
+    target_link_options(BibEmbedder PRIVATE
+        "SHELL:--embed-file ${BIB_FONTS_DIR}@/usr/share/fonts")
+endif ()
+
+# CA bundle for in-engine TLS verification (Phase 4) — the path is
+# compiled into CurlSSLHandleEmscripten.cpp.
+if (BIB_CA_BUNDLE)
+    target_link_options(BibEmbedder PRIVATE
+        "SHELL:--embed-file ${BIB_CA_BUNDLE}@/etc/ssl/cacert.pem")
+endif ()
+
+# G1 GPU context spike (decision-005): standalone Skia-over-WebGL2 proof,
+# linked against the same libSkia.a the engine uses. EXCLUDE_FROM_ALL —
+# built only on demand via `ninja BibGpuSpike`. SK_GL/SK_GANESH are PRIVATE
+# defines on the Skia target, so a TU using the Ganesh public headers must
+# set them itself (the PUBLIC ABI defines — SK_TRIVIAL_ABI, SK_R32_SHIFT,
+# SK_ASSUME_GL_ES — propagate through Skia::Skia).
+add_executable(BibGpuSpike EXCLUDE_FROM_ALL
+    ${BIB_EMBEDDER_DIR}/../spike/gpu-spike.cpp
+)
+set_target_properties(BibGpuSpike PROPERTIES OUTPUT_NAME gpu-spike)
+target_compile_definitions(BibGpuSpike PRIVATE SK_GL SK_GANESH)
+target_link_libraries(BibGpuSpike PRIVATE Skia::Skia)
+target_link_options(BibGpuSpike PRIVATE
+    "SHELL:-sMAX_WEBGL_VERSION=2"
+    # The SK_ASSUME_GL_ES=1 archive validates the GLES3 interface strictly:
+    # glMapBufferRange/glUnmapBuffer/glFlushMappedBufferRange must resolve.
+    # Emscripten only ships those (JS shadow-buffer emulation) with FULL_ES3.
+    "SHELL:-sFULL_ES3=1"
+    "SHELL:-sINITIAL_MEMORY=64MB"
+    "SHELL:-sALLOW_MEMORY_GROWTH=1"
+    "SHELL:--profiling-funcs"
+)

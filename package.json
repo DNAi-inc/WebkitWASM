@@ -1,0 +1,31 @@
+{
+  "name": "webkit-wasm-test",
+  "version": "0.0.1",
+  "private": true,
+  "description": "A test being done with WebKit and WebAssembly.",
+  "type": "module",
+  "scripts": {
+    "dev": "node tools/dev-server.mjs",
+    "wisp": "wisp-js-server --host 127.0.0.1 --port 5001 --logging INFO --options '{\"allow_loopback_ips\": true, \"allow_private_ips\": true}'",
+    "desktop": "PORT=${PORT:-14830} BIB_WISP=1 node tools/dev-server.mjs web --mount /engine=build/webcore/bin",
+    "test:bridge": "node --test tools/desktop-bridge.test.mjs",
+    "fixtures": "node tools/make-media-fixtures.mjs",
+    "test:decoder": "node --test --test-concurrency=1 tools/desktop-bridge.test.mjs tools/mse-decoder.test.mjs tools/network-transport.test.mjs",
+    "test:engine": "node tools/desktop-engine-test.mjs",
+    "build:docker": "bash tools/docker-build.sh",
+    "desktop:fixtures": "BIB_LOCAL_FIXTURES=1 PORT=${PORT:-14831} npm run desktop",
+    "test:gc-roots": "bash tools/test-gc-roots.sh",
+    "test:stability": "node tools/browser-stability-test.mjs",
+    "test:dialogs": "node tools/browser-dialogs-test.mjs",
+    "test:youtube-controls": "node tools/youtube-controls-test.mjs",
+    "test:clipboard": "node tools/browser-clipboard-test.mjs"
+  },
+  "dependencies": {
+    "@mercuryworkshop/wisp-js": "0.5.0"
+  },
+  "devDependencies": {
+    "hls.js": "1.6.13",
+    "playwright": "^1.60.0",
+    "ws": "8.21.0"
+  }
+}

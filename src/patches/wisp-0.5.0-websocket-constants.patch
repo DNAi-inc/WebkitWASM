@@ -1,0 +1,20 @@
+--- a/src/client/polyfill.mjs
++++ b/src/client/polyfill.mjs
+@@ -1,3 +1,5 @@
++// Modified by DNAi-inc on 2026-10-20: expose standard WebSocket constants on instances.
++// SPDX-License-Identifier: LGPL-3.0-or-later
+ import { global_this } from "../compat.mjs";
+ import { ClientConnection } from "./connection.mjs";
+ 
+@@ -7,6 +9,11 @@
+ export const _wisp_connections = {};
+ 
+ export class WispWebSocket extends EventTarget {
++  // WebSocket constants are exposed on both the interface and its instances.
++  get CONNECTING() { return WispWebSocket.CONNECTING; }
++  get OPEN() { return WispWebSocket.OPEN; }
++  get CLOSING() { return WispWebSocket.CLOSING; }
++  get CLOSED() { return WispWebSocket.CLOSED; }
+   static CONNECTING = 0;
+   static OPEN = 1
+   static CLOSING = 2;

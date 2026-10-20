@@ -1,0 +1,12 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WebKit WASM desktop experiment</title>
+<style>body{font:17px/1.5 system-ui;background:#edf2f8;color:#182a42;max-width:760px;margin:8vh auto;padding:24px}a{color:#175db8}input,button{font:inherit;padding:12px;border:1px solid #b5bfcc;border-radius:12px}form{display:flex;gap:10px}input{flex:1;min-width:100px}button{background:#155fbf;color:white}small{display:block;margin-top:32px;color:#42536c}</style>
+<h1>WebKit WASM desktop experiment</h1>
+<p>A standalone WebKit engine running on this computer, with video decoded by your browser.</p>
+<form id="open"><input id="address" aria-label="Website address" value="https://example.com" required><button>Browse</button></form>
+<p><a id="media" href="#">Try video playback</a> · <a href="browser.html?desktop=1&amp;url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Daqz-KE-bpKQ">YouTube</a> · <a href="browser.html?desktop=1&url=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FWebKit">Wikipedia</a></p>
+<small>This is an experimental browser. Site compatibility varies. DRM, calls, camera access and browser extensions are not implemented.</small>
+<script>
+const open = address => 'browser.html?desktop=1&url='+encodeURIComponent(address);
+document.getElementById('open').onsubmit = event => {event.preventDefault();let value=document.getElementById('address').value.trim();if(!/^https?:\/\//i.test(value))value='https://'+value;location.href=open(value)};
+document.getElementById('media').href=open('https://media.w3.org/2010/05/sintel/trailer.mp4');
+</script></html>

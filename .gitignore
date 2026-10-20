@@ -1,0 +1,34 @@
+# Vendored / huge trees — pinned by hash in SOURCE-VERSIONS.json, never committed
+/third_party/
+/emsdk/
+/WebKit/
+
+# Build output
+build/
+dist/
+*.o
+*.a
+*.wasm
+*.wasm.map
+# gate9 fixture: 53-byte test module served to the guest engine
+!web/probe/probe-test.wasm
+
+# Node / web tooling
+node_modules/
+*.log
+
+# Python
+__pycache__/
+.venv/
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local search index
+.grepai/
+
+# Generated synthetic media acceptance fixtures
+web/media/generated/

@@ -1,0 +1,62 @@
+WebKit + WASM test — building and running
+
+Use a Linux host with a C/C++ toolchain, CMake, Ninja, pkg-config, Git, curl,
+tar, xz, unzip, Python 3, ripgrep and Node.js 18 or later. Building WebKit and
+its dependencies requires substantial memory and disk space. SOURCE-VERSIONS.json
+and DEPENDENCIES.json record source revisions and dependency archive hashes.
+
+From the project directory:
+
+  npm ci --ignore-scripts
+  bash tools/bootstrap.sh
+  BIB_JOBS=3 bash tools/build-webcore.sh
+
+The bootstrap prepares the pinned WebKit, Emscripten and dependency sources
+under third_party/. The build applies the cumulative WebKit patch and builds
+the modified Binaryen tool. Its final JSC GC-root post-link pass is mandatory:
+do not run a later optimization without repeating that pass. Outputs are under
+build/webcore/bin/. BIB_JOBS controls build parallelism. A Docker alternative is:
+
+  BIB_JOBS=3 bash tools/docker-build.sh
+
+Serve the standalone browser with its local Wisp transport:
+
+  npm run desktop
+
+Open http://localhost:14830/browser.html?url=https://example.com in a compatible
+browser. The test server supplies the isolation headers required for shared
+memory. It is a local development fixture, not an authenticated public service.
+
+Generate optional media fixtures and run checks:
+
+  npm run fixtures
+  npm run test:decoder
+  npm run test:engine
+
+Engine tests require the built engine and running fixture server; individual
+test tools expose their environment settings in the source.
+
+Wisp client rebuild and replacement
+
+  bash tools/rebuild-wisp-client.sh
+
+This installs the pinned build dependencies from the included lockfile and
+rebuilds web/vendor/wisp-client.js and its source map from vendor-src/wisp-js/.
+The standalone page loads that client as a separate file. An interface-compatible
+modified client can replace it without changing the engine binary. The dated
+local fix exposes the standard WebSocket instance constants; its source and
+patch are included. Original Mercury Workshop copyright and LGPL terms apply.
+
+Users may modify the LGPL library and reverse engineer a combined work for
+debugging those modifications. No project restriction overrides those rights.
+Keep the applicable LGPL/GPL texts, copyright, modification and source notices.
+A distributor of a combined work must meet the applicable LGPL requirements,
+including corresponding source/application code or a suitable replacement
+mechanism, and installation information where required. See LGPL v3 section 4
+in LICENSES/LGPL-3.0-only.txt. Publishing this source tree alone does not establish
+compliance for a different application or binary.
+
+This repository does not distribute a prebuilt browser engine. Before offering
+one, retain its exact corresponding source, modifications, dependency inputs,
+build settings and all applicable notices. Download scripts are not a substitute
+for maintaining the required corresponding-source access.

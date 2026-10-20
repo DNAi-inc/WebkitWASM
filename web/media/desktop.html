@@ -1,0 +1,56 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>WebKit desktop media acceptance</title>
+<style>body{font:18px system-ui;background:#eef2f8;color:#13243a;margin:24px}video{width:640px;max-width:95vw;border-radius:20px;background:black}button,input{font:inherit;padding:10px}#overlay{position:absolute;left:360px;top:210px;color:white;background:#d12763;padding:14px;border-radius:12px}pre{white-space:pre-wrap}</style>
+<h1>WebKit desktop browser</h1>
+<video id="video" controls preload="metadata" src="generated/clip.mp4"></video>
+<div id="overlay">Page content above video</div>
+<p><button id="play">Play</button> <button id="pause">Pause</button> <button id="seek">Seek to 8s</button> <button id="webm">WebM</button> <button id="large">Large MP4</button> <button id="mse">MediaSource segments</button> <button id="hls">HLS player</button></p>
+<form id="form"><label>Text input <input id="input" name="text" placeholder="Type here"></label> <button>Save locally</button></form>
+<pre id="status">Ready</pre>
+<p><a href="https://example.com">Example website</a> · <a href="https://en.wikipedia.org/wiki/WebKit">Wikipedia</a></p>
+<script>
+const video = document.getElementById('video');
+const report = text => { document.getElementById('status').textContent = text; console.log('DESKTOPGATE '+text); };
+for (const name of ['loadedmetadata','loadeddata','playing','pause','seeked','ended','error']) video.addEventListener(name, () => report(JSON.stringify({event:name,time:video.currentTime,duration:video.duration,width:video.videoWidth,height:video.videoHeight,ready:video.readyState,error:video.error?.code})));
+document.getElementById('play').onclick = () => video.play().catch(e=>report(e.name));
+document.getElementById('pause').onclick = () => video.pause();
+document.getElementById('seek').onclick = () => video.currentTime=8;
+document.getElementById('webm').onclick = () => { video.src='generated/clip.webm';video.load(); };
+document.getElementById('large').onclick = () => { video.src='generated/large.mp4';video.load(); };
+document.getElementById('mse').onclick = async () => {
+  window.mseGate = { events: [], updates: 0, done: false, error: null };
+  try {
+    const source = new MediaSource(); window.testMediaSource = source;
+    for (const name of ['sourceopen', 'sourceended', 'sourceclose']) source.addEventListener(name, () => mseGate.events.push(name));
+    source.addEventListener('sourceopen', async () => {
+      try {
+        const buffer = source.addSourceBuffer('video/mp4; codecs="avc1.64001e,mp4a.40.2"');
+        window.testSourceBuffer = buffer;
+        const data = new Uint8Array(await (await fetch('generated/fragmented.mp4')).arrayBuffer());
+        for (let offset = 0; offset < data.length; offset += 131071) await new Promise((resolve, reject) => {
+          buffer.addEventListener('updateend', () => { mseGate.updates++; resolve(); }, { once: true });
+          buffer.addEventListener('error', () => reject(new Error('append failed')), { once: true });
+          buffer.appendBuffer(data.slice(offset, offset + 131071));
+        });
+        source.endOfStream(); mseGate.done = true;
+        report('MediaSource appended '+mseGate.updates+' segments');
+      } catch (error) { mseGate.error = error.message; report('MediaSource '+error.name+': '+error.message); }
+    }, { once: true });
+    video.src = URL.createObjectURL(source); video.load();
+  } catch (error) { mseGate.error = error.message; report('MediaSource '+error.name+': '+error.message); }
+};
+document.getElementById('hls').onclick = async () => {
+  window.hlsGate = { ready: false, errors: [] };
+  try {
+    if (!window.Hls) await new Promise((resolve, reject) => { const script=document.createElement('script');script.src='generated/hls.min.js';script.onload=resolve;script.onerror=reject;document.head.append(script); });
+    if (!Hls.isSupported()) throw new Error('HLS player cannot use this MediaSource implementation');
+    window.testHls?.destroy();
+    const hls = new Hls({ enableWorker: false, maxBufferLength: 20, backBufferLength: 10 }); window.testHls = hls;
+    hls.on(Hls.Events.ERROR, (_, data) => { hlsGate.errors.push({ type: data.type, details: data.details, fatal: data.fatal }); report('HLS '+data.details); });
+    hls.on(Hls.Events.MANIFEST_PARSED, () => { hlsGate.ready = true; report('HLS manifest parsed'); });
+    hls.attachMedia(video); hls.loadSource('generated/hls/index.m3u8');
+  } catch (error) { hlsGate.errors.push({ message: error.message, fatal: true }); report('HLS '+error.message); }
+};
+document.getElementById('form').onsubmit = event => { event.preventDefault();localStorage.setItem('desktop-test',document.getElementById('input').value);report('Saved '+localStorage.getItem('desktop-test')); };
+window.desktopState = () => ({time:video.currentTime,paused:video.paused,ended:video.ended,width:video.videoWidth,height:video.videoHeight,ready:video.readyState,error:video.error?.code || null,canMP4:video.canPlayType('video/mp4; codecs="avc1.42E01E"'),canWebM:video.canPlayType('video/webm; codecs="vp9,opus"')});
+</script>

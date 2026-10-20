@@ -1,0 +1,67 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Opening webpage</title><body><p role="status">Opening Browser…</p><script>
+(async()=>{
+  const parentOrigin='__WASM_HOST_PARENT_ORIGIN__',nonce=new URLSearchParams(location.search).get('nonce');
+  let loading=false;
+  const fail=error=>parent.postMessage({type:'wasmhost-package-error',nonce,error:String(error).slice(0,500)},parentOrigin);
+  try{
+    const status=document.querySelector('[role=status]');
+    addEventListener('message',async event=>{
+      if(loading||event.source!==parent||event.origin!==parentOrigin||event.data?.nonce!==nonce||!['wasmhost-package-load','wasmhost-package-stage'].includes(event.data.type))return;
+      if(event.data.type==='wasmhost-package-stage'){status.textContent=String(event.data.text).slice(0,120);return;}
+      loading=true;
+      try{
+        const files=event.data.files;
+        if(!Array.isArray(files)||files.length!==13)throw Error('Invalid WebKit assets.');
+        const paths=new Set(),assets={},base=location.origin+'/';let total=0,entry,engine;
+        for(const file of files){
+          if(!file.path||paths.has(file.path)||file.path.split('/').some(p=>!p||p==='.'||p==='..')||/[\\%?#:]/.test(file.path))throw Error('Invalid WebKit asset path.');
+          paths.add(file.path);const blob=file.blob instanceof Blob?file.blob:new Blob([file.bytes],{type:file.mime});total+=blob.size;
+          if(total>220*1024*1024||!/^([a-f0-9]{64})$/.test(file.sha256)||!['text/html; charset=utf-8','text/javascript; charset=utf-8','application/wasm'].includes(file.mime))throw Error('Invalid WebKit asset manifest.');
+          if(blob.type!==file.mime)throw Error('Invalid WebKit asset type.');
+          // The authenticated parent verifies the pinned release and each asset.
+          // Immutable Blobs cannot change after that verification. Do not read
+          // another 180 MB WASM buffer merely to repeat the same hash per tab.
+          if(!(event.data.immutableAssets===true&&file.blob instanceof Blob)){
+            const bytes=new Uint8Array(await blob.arrayBuffer());
+            const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),n=>n.toString(16).padStart(2,'0')).join('');
+            if(hash!==file.sha256)throw Error('WebKit asset integrity check failed.');
+          }
+          if(file.path==='browser.html')entry=await blob.text();
+          if(file.path==='engine/embedder.js')engine=blob;
+          assets[new URL(file.path,base).href]=URL.createObjectURL(blob);
+        }
+        if(!paths.has('browser.html')||!paths.has('engine/embedder.wasm'))throw Error('WebKit entry unavailable.');
+        if(!entry||!engine)throw Error('WebKit entry unavailable.');
+        // Blob assets retain this isolated origin. No service worker, remote
+        // code endpoint, certificate exception, or website network proxy.
+        const install=function(map,base){
+          const asset=resource=>{try{const url=new URL(typeof resource==='string'||resource instanceof URL?resource:resource.url,base);return map[url.origin+url.pathname]||resource;}catch{return resource;}};
+          self.__WasmHostAssetURL=asset;
+          const fetchAsset=self.fetch.bind(self);
+          self.fetch=(resource,options)=>fetchAsset(asset(resource),options);
+          const open=XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open=function(method,url,...options){return open.call(this,method,asset(url),...options);};
+        };
+        // Pthread workers load the same wrapper, including asset lookup for
+        // synchronous guest-polyfill requests. The accepted WASM is unchanged.
+        const prefix='('+install.toString()+')('+JSON.stringify(assets)+','+JSON.stringify(base)+');\n';
+        assets[new URL('engine/embedder.js',base).href]=URL.createObjectURL(new Blob([prefix,engine],{type:'text/javascript'}));
+        const doc=new DOMParser().parseFromString(entry,'text/html');
+        for(const element of doc.querySelectorAll('script[src]')){
+          const url=new URL(element.getAttribute('src'),base).href;
+          if(!assets[url])throw Error('Unknown WebKit script.');
+          element.setAttribute('src',assets[url]);
+        }
+        const preload=doc.createElement('script');
+        preload.textContent='('+install.toString()+')('+JSON.stringify(assets)+','+JSON.stringify(base)+');window.__WasmHostProfileSeed='+JSON.stringify(JSON.stringify(event.data.profile)).replaceAll('<','\\u003c')+';';
+        doc.head.prepend(preload);
+        sessionStorage.setItem('wasmhost-webkit-channel',JSON.stringify({origin:parentOrigin,nonce}));
+        history.replaceState(null,'','/browser.html?persist=0&desktop=1&wisp='+encodeURIComponent('wss://wasmhost.invalid/wisp/'));
+        document.open();document.write('<!doctype html>'+doc.documentElement.outerHTML);document.close();
+      }catch(error){fail(error);}
+    });
+    document.querySelector('[role=status]').textContent='Loading webpage renderer…';
+    parent.postMessage({type:'wasmhost-package-awaiting',nonce},parentOrigin);
+  }catch(error){fail(error);}
+})();
+</script></body></html>

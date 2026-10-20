@@ -1,0 +1,19 @@
+{
+  "project": "WebKit + WASM test",
+  "upstream": "https://github.com/theogbob/WebkitWasm",
+  "upstreamRevision": "68c618544e1f8af18ebce346281a6a49766aa194",
+  "WebKit": "aec9d2ad958e716ab4bca4bf03007e6edac7323f",
+  "BinaryenGC": "b9c72894fba2ee5bef8e4002fb176c1917a556ad",
+  "emsdk": "35659964bc2762fffec0d257997fb61475f765b7",
+  "wisp": {
+    "version": "0.5.0",
+    "license": "LGPL-3.0-or-later",
+    "sourceRevision": "4fb68b0ea0644c06255ed023c0257eb6b9067825",
+    "npmIntegrity": "sha512-YIPnONZdMYRXLdttL/zQM2PwjHQw3LfNPWTP54Lqhehs79lcORY8rwv5j7bGnuz9S31rZIh1OEzldubE9dtnoA==",
+    "localChanges": [
+      "Standard WebSocket instance constants; dated LGPL source and patch included."
+    ]
+  },
+  "baselineEngineSHA256": "159d14562e5acee11de9d4f2d62b09113bb9c3f49a74ba32f85566b1f5c9f437",
+  "publication": "source-only; no browser-engine binary offered"
+}

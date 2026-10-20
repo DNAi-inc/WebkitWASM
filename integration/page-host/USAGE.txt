@@ -1,0 +1,5 @@
+Page-host test sources
+
+These are neutral, experimental embedding sources for WebKit and WASM. The host receives a nonce-bound channel from its parent and has no application credentials. Names are local interface identifiers for this test.
+
+The standalone web/browser.html is the runnable test entry. The optional host fragments require an embedding parent implementing the nonce-bound channel.

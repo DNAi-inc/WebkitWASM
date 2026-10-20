@@ -1,0 +1,28 @@
+# Third-party notices
+
+This is a multi-licence source project. `LICENSE` is the original port's BSD-2-Clause notice; it does not replace a third party's licence. Per-file notices and the copies under `LICENSES/` remain applicable.
+
+| Component | Licence / selected terms | Source and notices |
+| --- | --- | --- |
+| WebkitWasm port | BSD-2-Clause | Original `LICENSE`; upstream recorded in `SOURCE-VERSIONS.json` |
+| WebKit / JavaScriptCore / WebCore | Mixed LGPL and BSD, according to each file | Pinned WebKit source; cumulative port patch; `LICENSES/WebKit/` |
+| Wisp 0.5.0 and documented local fix | LGPL-3.0-or-later | Copyright (C) 2024 Mercury Workshop; `vendor-src/wisp-js/`; LGPL and GPL texts under `LICENSES/` |
+| Binaryen browser module and modified build tool | Apache-2.0, with original notices | Module header; pinned tool source and patch; `LICENSES/Apache-2.0.txt` |
+| Emscripten / runtime | Original MIT and LLVM terms where applicable | Pinned emsdk source; `LICENSES/Emscripten.txt` |
+| ICU | Unicode/ICU terms | `LICENSES/dependencies/icu/` |
+| Skia and WebKit third-party code | Their original per-file licences | `LICENSES/WebKit/ThirdParty/`; pinned WebKit source |
+| FreeType | FreeType License (FTL), selected rather than its alternative GPL licence | `LICENSES/dependencies/freetype/` |
+| HarfBuzz, Fontconfig, libxml2, curl, nghttp2, libpsl | Original permissive terms | Corresponding directories under `LICENSES/dependencies/` |
+| zlib, Brotli, libpng, libjpeg-turbo, libwebp | Original compression/image-library terms | Corresponding directories under `LICENSES/dependencies/` |
+| OpenSSL | Apache-2.0 and original notices | `LICENSES/dependencies/openssl/` |
+| SQLite | Public domain dedication, subject to its own source notices | Pinned amalgamation URL in `DEPENDENCIES.json` |
+| DejaVu / Bitstream Vera fonts | Bitstream Vera terms; DejaVu changes public domain | `LICENSES/Embedded-fonts-and-CA-notices.txt` |
+| Pacifico test fonts | SIL Open Font License 1.1 | Copyright 2018 The Pacifico Project Authors; `LICENSES/Pacifico-OFL-1.1.txt` |
+| Gentium test font | SIL Open Font License 1.1; reserved names retained for the original font | Copyright (c) 2003-2011 SIL International; `LICENSES/Gentium-OFL-1.1.txt` |
+| Embedded CA resources, when built | Original certificate-store terms, including MPL-2.0 Mozilla material | Builder package notices; `LICENSES/MPL-2.0.txt` |
+
+Portions of this software are copyright © 2024 The FreeType Project (https://freetype.org/). All rights reserved. This software is based in part on the work of the Independent JPEG Group. Original licence texts contain the authoritative acknowledgements and conditions.
+
+Test/development npm dependencies retain their own package notices and lockfile licence metadata; they are not silently relicensed under the port notice. Generated synthetic media is a test fixture, not an additional media codec implementation. Host browser decoders remain provided by the host browser.
+
+This source publication makes no claim of endorsement by WebKit, Mercury Workshop, font authors or any other upstream project.
