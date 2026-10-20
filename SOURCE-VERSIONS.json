@@ -15,5 +15,6 @@
     ]
   },
   "baselineEngineSHA256": "159d14562e5acee11de9d4f2d62b09113bb9c3f49a74ba32f85566b1f5c9f437",
-  "publication": "source-only; no browser-engine binary offered"
+  "publication": "source-only; no browser-engine binary offered",
+  "profileSnapshot": "2026-10-20; SameSite cookie parsing and profile overlay"
 }

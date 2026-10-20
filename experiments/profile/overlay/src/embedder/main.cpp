@@ -1,3 +1,5 @@
+// Modified for WebKit/WASM profile experiments on 2026-10-20.
+// Original copyright and licence notices remain below.
 // BrowserInBrowser embedder.
 // Builds a WebCore::Page against internal headers (no public embedding API
 // exists outside Cocoa — decision-001), loads a fixed HTML string, lays it

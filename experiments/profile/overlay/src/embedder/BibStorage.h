@@ -1,3 +1,5 @@
+// Modified for WebKit/WASM profile experiments on 2026-10-20.
+// Original copyright and licence notices remain below.
 // In-memory web storage (localStorage / sessionStorage).
 //
 // Two stacked empty-clients traps (root cause #11, same family as cookies):

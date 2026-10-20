@@ -1,3 +1,5 @@
+// Modified for WebKit/WASM profile experiments on 2026-10-20.
+// Original copyright and licence notices remain below.
 /*
  * Copyright (C) 2020 Sony Interactive Entertainment Inc.
  *
